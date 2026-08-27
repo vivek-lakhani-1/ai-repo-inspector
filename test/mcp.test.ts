@@ -42,8 +42,28 @@ describe("review_repository over MCP", () => {
       arguments: { repo_path: dir },
     });
     expect(result.isError).toBeFalsy();
-    expect(textOf(result)).toContain(`# Review Report: ${dir}`);
+    expect(textOf(result)).toContain("# Review Report:");
+    expect(textOf(result)).toContain(dir);
     expect(textOf(result)).toContain(`${fileName} \` (added)`);
+  });
+
+  it("forwards base_ref to the diff (adapter wiring, not just schema)", async () => {
+    const dir = initRepo();
+    const fileName = addFeatureCommit(dir);
+    const client = await connectedClient();
+
+    // Diffing feature...feature yields nothing; against main it shows the file.
+    const self = await client.callTool({
+      name: "review_repository",
+      arguments: { repo_path: dir, base_ref: "feature" },
+    });
+    expect(textOf(self)).toContain("No changed files detected");
+
+    const main = await client.callTool({
+      name: "review_repository",
+      arguments: { repo_path: dir, base_ref: "main" },
+    });
+    expect(textOf(main)).toContain(fileName);
   });
 
   it("rejects validation_commands unless the operator opted in", async () => {

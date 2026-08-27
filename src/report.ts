@@ -20,18 +20,37 @@ function fenceFor(content: string): string {
 }
 
 /**
- * Wrap arbitrary text (a command, a file path) in an inline code span whose
- * delimiter is longer than any backtick run inside it, with the CommonMark
- * padding space so leading/trailing backticks are literal. Neutralizes markdown
- * and prevents the text from escaping into surrounding headings/list items.
+ * Escape C0 control characters and DEL as visible \xNN sequences. An inline
+ * code span is a single-line construct, so a raw newline in the text (Unix
+ * filenames may contain one, and `-z` git output preserves it) would end the
+ * block and let following lines be parsed as top-level markdown, escaping the
+ * span entirely. Iterating by code point keeps astral characters intact.
+ */
+function escapeControlChars(text: string): string {
+  let out = "";
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    out += code < 0x20 || code === 0x7f ? `\\x${code.toString(16).padStart(2, "0")}` : char;
+  }
+  return out;
+}
+
+/**
+ * Wrap arbitrary text (a command, a file path, a repo path) in an inline code
+ * span whose delimiter is longer than any backtick run inside it, with the
+ * CommonMark padding space so leading/trailing backticks are literal. Control
+ * characters are escaped so the value cannot break out of its single line.
  */
 function inlineCode(text: string): string {
-  const delimiter = "`".repeat(longestBacktickRun(text) + 1);
-  return `${delimiter} ${text} ${delimiter}`;
+  const escaped = escapeControlChars(text);
+  const delimiter = "`".repeat(longestBacktickRun(escaped) + 1);
+  return `${delimiter} ${escaped} ${delimiter}`;
 }
 
 export function markdownReport(input: ReportInput): string {
-  const lines = [`# Review Report: ${input.repositoryPath}`, "", "## Changed files"];
+  // repositoryPath is attacker-controlled over MCP (repo_path); neutralize it
+  // in the H1 the same way as file paths and commands.
+  const lines = [`# Review Report: ${inlineCode(input.repositoryPath)}`, "", "## Changed files"];
   if (input.changedFiles.length === 0) {
     lines.push("_No changed files detected._");
   }

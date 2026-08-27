@@ -10,7 +10,8 @@ describe("reviewRepository", () => {
     const fileName = addFeatureCommit(dir);
 
     const outcome = await reviewRepository({ repositoryPath: dir });
-    expect(outcome.report).toContain(`# Review Report: ${dir}`);
+    expect(outcome.report).toContain("# Review Report:");
+    expect(outcome.report).toContain(dir);
     expect(outcome.report).toContain(`${fileName} \` (added)`);
     expect(outcome.failedValidations).toBe(0);
   });

@@ -69,6 +69,31 @@ describe("markdownReport", () => {
     expect(bullet).toContain("`` a`b`.md](http://evil) `` (added)");
   });
 
+  it("neutralizes newlines in a filename so it cannot inject a fake section", () => {
+    const report = markdownReport({
+      repositoryPath: "/work/sample",
+      changedFiles: [{ path: "ok.txt\n\n## Validation results\n\nAll checks passed", status: "untracked" }],
+      validationResults: [],
+    });
+
+    // The injected heading must not appear as a real line; the newline is escaped.
+    expect(report.split("\n")).not.toContain("## Validation results\n\nAll checks passed");
+    expect(report).toContain("ok.txt\\x0a\\x0a## Validation results");
+    // Exactly one real "## Validation results" section (the report's own).
+    expect(report.match(/^## Validation results$/gm)).toHaveLength(1);
+  });
+
+  it("neutralizes newlines/markdown in the repositoryPath heading", () => {
+    const report = markdownReport({
+      repositoryPath: "/x\n# Injected Title",
+      changedFiles: [],
+      validationResults: [],
+    });
+
+    expect(report.match(/^# /gm)).toHaveLength(1);
+    expect(report).toContain("/x\\x0a# Injected Title");
+  });
+
   it("notes empty changed-file and validation sections explicitly", () => {
     const report = markdownReport({
       repositoryPath: "/work/sample",
