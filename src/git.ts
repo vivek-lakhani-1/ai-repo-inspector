@@ -7,13 +7,18 @@ export class GitError extends Error {}
 
 const MAX_GIT_OUTPUT_BYTES = 10 * 1024 * 1024;
 
-function git(repositoryPath: string, args: string[]): string {
+// The target repo is data, not a trusted environment: its own .git/config can
+// name programs git would execute (core.fsmonitor). Disable that for every call.
+const HARDENING_ARGS = ["-c", "core.fsmonitor=false"];
+
+function execGit(repositoryPath: string, args: string[], trimOutput: boolean): string {
   try {
-    return execFileSync("git", args, {
+    const output = execFileSync("git", [...HARDENING_ARGS, ...args], {
       cwd: repositoryPath,
       encoding: "utf8",
       maxBuffer: MAX_GIT_OUTPUT_BYTES,
-    }).trim();
+    });
+    return trimOutput ? output.trim() : output;
   } catch (error) {
     const stderr =
       error instanceof Error && "stderr" in error
@@ -24,6 +29,13 @@ function git(repositoryPath: string, args: string[]): string {
     );
   }
 }
+
+const git = (repositoryPath: string, args: string[]): string =>
+  execGit(repositoryPath, args, true);
+
+// NUL-delimited output must not be trimmed: a path may begin or end with spaces.
+const gitRaw = (repositoryPath: string, args: string[]): string =>
+  execGit(repositoryPath, args, false);
 
 function tryGit(repositoryPath: string, args: string[]): string | undefined {
   try {
@@ -64,35 +76,52 @@ export function resolveBaseRef(repositoryPath: string, baseRef?: string): string
   );
 }
 
-/** Parse `git diff --name-status` output, including rename/copy records. */
+/**
+ * Parse NUL-delimited `git diff --name-status -z` output. Newline parsing would
+ * see C-quoted strings for non-ASCII/quoted paths (core.quotePath); with -z,
+ * paths arrive verbatim. Rename/copy records carry two paths.
+ */
 export function parseNameStatus(output: string): ChangedFile[] {
-  return output
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const parts = line.split("\t");
-      const code = parts[0] ?? "";
-      if (code.startsWith("R") || code.startsWith("C")) {
-        // Format is `R<score>\t<old path>\t<new path>`; report the new path.
-        return {
-          path: parts[2] ?? parts[1] ?? "",
-          status: code.startsWith("R") ? ("renamed" as const) : ("added" as const),
-        };
-      }
-      const status = code === "A" ? ("added" as const) : code === "D" ? ("deleted" as const) : ("modified" as const);
-      return { path: parts.slice(1).join("\t"), status };
-    });
+  const tokens = output.split("\0").filter((token) => token.length > 0);
+  const files: ChangedFile[] = [];
+  let index = 0;
+  while (index < tokens.length) {
+    const code = tokens[index++] ?? "";
+    if (code.startsWith("R") || code.startsWith("C")) {
+      const oldPath = tokens[index++];
+      const newPath = tokens[index++];
+      files.push({
+        path: newPath ?? oldPath ?? "",
+        status: code.startsWith("R") ? ("renamed" as const) : ("added" as const),
+      });
+    } else {
+      const status =
+        code === "A" ? ("added" as const) : code === "D" ? ("deleted" as const) : ("modified" as const);
+      files.push({ path: tokens[index++] ?? "", status });
+    }
+  }
+  return files;
 }
 
 export function changedFiles(repositoryPath: string, baseRef?: string): ChangedFile[] {
   if (!existsSync(repositoryPath)) {
     throw new GitError(`Repository path does not exist: "${repositoryPath}".`);
   }
+  if (tryGit(repositoryPath, ["rev-parse", "--git-dir"]) === undefined) {
+    throw new GitError(`Not a git repository: "${repositoryPath}".`);
+  }
   const base = resolveBaseRef(repositoryPath, baseRef);
-  const diff = git(repositoryPath, ["diff", "--name-status", "-M", `${base}...HEAD`]);
+  const diff = gitRaw(repositoryPath, [
+    "diff",
+    "--name-status",
+    "-z",
+    "-M",
+    "--no-ext-diff",
+    `${base}...HEAD`,
+  ]);
   const files = parseNameStatus(diff);
-  const untracked = git(repositoryPath, ["ls-files", "--others", "--exclude-standard"]);
-  for (const path of untracked.split("\n").filter(Boolean)) {
+  const untracked = gitRaw(repositoryPath, ["ls-files", "--others", "--exclude-standard", "-z"]);
+  for (const path of untracked.split("\0").filter(Boolean)) {
     files.push({ path, status: "untracked" });
   }
   return files;
