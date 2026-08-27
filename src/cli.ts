@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { realpathSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { reviewRepository } from "./core.js";
 import { GitError } from "./git.js";
@@ -45,8 +46,13 @@ export function parseArgs(argv: string[]): Args {
   return args;
 }
 
-async function main(): Promise<number> {
-  const args = parseArgs(process.argv.slice(2));
+/**
+ * Run the CLI and return the process exit code. argv/cwd are injectable so the
+ * whole command is testable in-process without mutating process globals; the
+ * report file is written relative to cwd.
+ */
+export async function main(argv: string[] = process.argv.slice(2), cwd: string = process.cwd()): Promise<number> {
+  const args = parseArgs(argv);
   if (args.command !== "review" || !args.repositoryPath || args.errors.length > 0) {
     for (const error of args.errors) {
       console.error(error);
@@ -63,7 +69,7 @@ async function main(): Promise<number> {
       format: args.format,
     });
     const outputFile = args.format === "json" ? "review-report.json" : "review-report.md";
-    writeFileSync(outputFile, report, "utf8");
+    writeFileSync(join(cwd, outputFile), report, "utf8");
     console.log(`Review report written to ${outputFile}`);
     if (failedValidations > 0) {
       console.error(`${failedValidations} validation command(s) failed; see the report for output.`);
@@ -84,19 +90,19 @@ async function main(): Promise<number> {
  * entry to its real path, so when the bin is invoked through npm's symlink
  * (node_modules/.bin/inspector) argv[1] is the symlink; compare real paths.
  */
-function isMainModule(): boolean {
-  const entry = process.argv[1];
-  if (entry === undefined) {
+export function isMainModule(argv1: string | undefined, moduleUrl: string): boolean {
+  if (argv1 === undefined) {
     return false;
   }
   try {
-    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+    return moduleUrl === pathToFileURL(realpathSync(argv1)).href;
   } catch {
     return false;
   }
 }
 
-if (isMainModule()) {
+/* c8 ignore start -- process entry glue; behavior is covered by cli-main.test.ts via a real subprocess */
+if (isMainModule(process.argv[1], import.meta.url)) {
   main()
     .then((code) => {
       process.exitCode = code;
@@ -106,3 +112,4 @@ if (isMainModule()) {
       process.exitCode = 1;
     });
 }
+/* c8 ignore stop */

@@ -74,6 +74,19 @@ describe("changedFiles", () => {
     expect(files).toContainEqual({ path: "naïve.txt", status: "untracked" });
   });
 
+  it("preserves leading/trailing spaces in filenames (no-trim invariant)", () => {
+    const dir = initRepo();
+    runGit(dir, ["checkout", "-b", "feature"]);
+    writeFileSync(join(dir, " leading.txt"), "committed\n");
+    runGit(dir, ["add", "-A"]);
+    runGit(dir, ["commit", "-m", "spacey"]);
+    writeFileSync(join(dir, "trailing.txt "), "untracked\n");
+
+    const files = changedFiles(dir);
+    expect(files).toContainEqual({ path: " leading.txt", status: "added" });
+    expect(files).toContainEqual({ path: "trailing.txt ", status: "untracked" });
+  });
+
   it("prefers the remote default branch (origin/HEAD) when one exists", () => {
     const upstream = initRepo("main");
     const clone = cloneRepo(upstream);

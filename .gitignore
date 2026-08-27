@@ -1,5 +1,6 @@
 node_modules/
 dist/
+coverage/
 review-report.md
 review-report.json
 *.log
