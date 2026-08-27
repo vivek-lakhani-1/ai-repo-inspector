@@ -15,7 +15,7 @@ server.tool(
     validationCommands: z.array(z.string()).optional(),
   },
   async (input: any) => {
-    const report = await reviewRepository({
+    const { report } = await reviewRepository({
       repositoryPath: input.repoPath,
       baseRef: input.baseRef,
       validationCommands: input.validationCommands,

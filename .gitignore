@@ -1,4 +1,4 @@
 node_modules/
 dist/
 review-report.md
-*.log
+*.logreview-report.json
