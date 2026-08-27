@@ -11,7 +11,7 @@ describe("reviewRepository", () => {
 
     const outcome = await reviewRepository({ repositoryPath: dir });
     expect(outcome.report).toContain(`# Review Report: ${dir}`);
-    expect(outcome.report).toContain(`${fileName} (added)`);
+    expect(outcome.report).toContain(`${fileName} \` (added)`);
     expect(outcome.failedValidations).toBe(0);
   });
 
@@ -36,5 +36,32 @@ describe("reviewRepository", () => {
     expect(outcome.failedValidations).toBe(1);
     expect(outcome.report).toContain("FAILED");
     expect(outcome.report).toContain("lint broke");
+  });
+
+  it("counts only the failing commands in a mixed run", async () => {
+    const dir = initRepo();
+    addFeatureCommit(dir);
+
+    const outcome = await reviewRepository({
+      repositoryPath: dir,
+      validationCommands: [
+        `node -e "process.exit(0)"`,
+        `node -e "process.exit(1)"`,
+        `node -e "process.exit(0)"`,
+      ],
+    });
+    expect(outcome.failedValidations).toBe(1);
+  });
+
+  it("passes an explicit baseRef through to the diff", async () => {
+    const dir = initRepo();
+    const fileName = addFeatureCommit(dir);
+
+    // main is the branch point; diffing feature...feature yields nothing.
+    const againstSelf = await reviewRepository({ repositoryPath: dir, baseRef: "feature" });
+    expect(againstSelf.report).toContain("No changed files detected");
+
+    const againstMain = await reviewRepository({ repositoryPath: dir, baseRef: "main" });
+    expect(againstMain.report).toContain(`${fileName} \` (added)`);
   });
 });

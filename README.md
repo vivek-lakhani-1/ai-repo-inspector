@@ -67,8 +67,11 @@ npm run inspector -- review --repo ./path/to/repo --base-ref origin/main --valid
   of aborting the review. Each command has a 5-minute timeout and a 64 KiB
   output cap.
 
-Untracked files are included in the changed-file list, and renames are
-reported under their new path.
+Changed-file statuses: `added`, `modified`, `deleted`, `renamed` (reported
+under the new path), `untracked`. Copies are reported as `added`; any other
+git status code (type change, unmerged) is reported as `modified`. Paths are
+read NUL-delimited, so non-ASCII and space-bearing filenames are preserved
+verbatim.
 
 Exit codes: `0` on success; `1` on a usage error, a git error, or when at
 least one validation command failed (so the CLI can gate CI).
@@ -106,6 +109,7 @@ src/mcp-server.ts   MCP stdio entry point
 src/git.ts          Git inspection
 src/validation.ts   validation execution
 src/report.ts       Markdown/JSON report generation
+src/types.ts        shared data types
 test/               tests (unit + CLI/MCP integration)
 ```
 

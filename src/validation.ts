@@ -15,7 +15,15 @@ function truncate(output: string, maxChars: number): string {
   if (output.length <= maxChars) {
     return output;
   }
-  return `${output.slice(0, maxChars)}\n[output truncated: ${output.length - maxChars} characters omitted]`;
+  let cut = maxChars;
+  // Don't slice through a surrogate pair, or the JSON report ends in a lone
+  // surrogate that serializes as an ill-formed \ud8xx escape.
+  const lastCode = output.charCodeAt(cut - 1);
+  if (lastCode >= 0xd800 && lastCode <= 0xdbff) {
+    cut -= 1;
+  }
+  const omitted = output.length - cut;
+  return `${output.slice(0, cut)}\n[output truncated: ${omitted} characters omitted]`;
 }
 
 /**

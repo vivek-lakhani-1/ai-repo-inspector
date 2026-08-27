@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterAll, describe, expect, it } from "vitest";
-import { createServer, type McpOptions } from "../src/mcp.js";
+import { ALLOW_VALIDATION_ENV, allowValidationFromEnv, createServer, type McpOptions } from "../src/mcp.js";
 import { addFeatureCommit, cleanupTempDirs, initRepo } from "./helpers.js";
 
 afterAll(cleanupTempDirs);
@@ -43,7 +43,7 @@ describe("review_repository over MCP", () => {
     });
     expect(result.isError).toBeFalsy();
     expect(textOf(result)).toContain(`# Review Report: ${dir}`);
-    expect(textOf(result)).toContain(`${fileName} (added)`);
+    expect(textOf(result)).toContain(`${fileName} \` (added)`);
   });
 
   it("rejects validation_commands unless the operator opted in", async () => {
@@ -74,6 +74,14 @@ describe("review_repository over MCP", () => {
     expect(result.isError).toBeFalsy();
     expect(textOf(result)).toContain("validation ran");
     expect(textOf(result)).toContain("passed");
+  });
+
+  it("enables validation only when INSPECTOR_ALLOW_VALIDATION is exactly \"1\"", () => {
+    expect(ALLOW_VALIDATION_ENV).toBe("INSPECTOR_ALLOW_VALIDATION");
+    expect(allowValidationFromEnv({ INSPECTOR_ALLOW_VALIDATION: "1" })).toBe(true);
+    expect(allowValidationFromEnv({ INSPECTOR_ALLOW_VALIDATION: "true" })).toBe(false);
+    expect(allowValidationFromEnv({ INSPECTOR_ALLOW_VALIDATION: "0" })).toBe(false);
+    expect(allowValidationFromEnv({})).toBe(false);
   });
 
   it("returns a clean tool error for a bad repository path", async () => {

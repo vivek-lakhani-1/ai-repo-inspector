@@ -12,6 +12,13 @@ export type McpOptions = {
   allowValidationCommands?: boolean;
 };
 
+export const ALLOW_VALIDATION_ENV = "INSPECTOR_ALLOW_VALIDATION";
+
+/** The env-var contract advertised to operators: exactly "1" enables commands. */
+export function allowValidationFromEnv(env: NodeJS.ProcessEnv): boolean {
+  return env[ALLOW_VALIDATION_ENV] === "1";
+}
+
 export function createServer(options: McpOptions = {}): McpServer {
   const server = new McpServer({ name: "repository-inspector", version: "2.0.0" });
 

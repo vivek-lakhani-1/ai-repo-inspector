@@ -49,6 +49,19 @@ describe("runValidation", () => {
     expect(result.output).toContain("[output truncated:");
     expect(result.output.length).toBeLessThan(300);
   });
+
+  it("does not truncate through a surrogate pair", async () => {
+    // 60 astral chars = 120 UTF-16 code units; cut at 101 would split a pair.
+    const result = await runValidation(
+      `node -e "process.stdout.write('😀'.repeat(60))"`,
+      cwd,
+      { maxOutputChars: 101 },
+    );
+    const body = result.output.split("\n[output truncated:")[0] ?? "";
+    // Every retained code unit pairs up: no lone surrogate at the boundary.
+    expect(/[\uD800-\uDBFF]$/.test(body)).toBe(false);
+    expect([...body].every((char) => char === "😀")).toBe(true);
+  });
 });
 
 describe("runValidations", () => {
