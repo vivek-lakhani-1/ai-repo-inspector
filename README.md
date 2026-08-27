@@ -39,6 +39,8 @@ There is no preferred label. Explain:
 
 ## Setup
 
+Requires Node 20.12+ (see `engines` in `package.json`).
+
 ```bash
 npm install
 npm run typecheck
@@ -48,11 +50,28 @@ npm test
 ## CLI
 
 ```bash
-npm run inspector -- review --repo ./path/to/repo --format markdown
-npm run inspector -- review --repo ./path/to/repo --validate "npm test"
+npm run inspector -- review --repo ./path/to/repo
+npm run inspector -- review --repo ./path/to/repo --format json
+npm run inspector -- review --repo ./path/to/repo --base-ref origin/main --validate "npm test"
 ```
 
-The report is written to `review-report.md`.
+- `--repo <path>` (required): repository to inspect. Paths containing spaces
+  are supported.
+- `--base-ref <ref>`: base to diff against (`<base>...HEAD`). Defaults to the
+  repository's default branch: `origin/HEAD`, then `main`, then `master`.
+- `--format markdown|json`: report format. Markdown is written to
+  `review-report.md`, JSON to `review-report.json`, in the current working
+  directory.
+- `--validate "<command>"` (repeatable): shell command run inside the
+  repository. A failing command is recorded in the report as FAILED instead
+  of aborting the review. Each command has a 5-minute timeout and a 64 KiB
+  output cap.
+
+Untracked files are included in the changed-file list, and renames are
+reported under their new path.
+
+Exit codes: `0` on success; `1` on a usage error, a git error, or when at
+least one validation command failed (so the CLI can gate CI).
 
 ## MCP
 
@@ -62,20 +81,32 @@ Start the stdio server with:
 npm run mcp-server
 ```
 
-It exposes a `review_repository` tool. Inspect the implementation to determine
-its current input contract and whether it is suitable for the production model
-you propose.
+It exposes one tool, `review_repository`, with inputs `repo_path` (required),
+`base_ref`, and `validation_commands` — the same review the CLI runs, returned
+as Markdown text.
+
+MCP clients sit outside the trust boundary, and `validation_commands` are
+arbitrary shell execution. They are therefore rejected unless the operator
+launching the server explicitly opts in:
+
+```bash
+INSPECTOR_ALLOW_VALIDATION=1 npm run mcp-server
+```
+
+Bad inputs (missing path, unknown ref) come back as tool errors with a
+one-line message rather than a crashed server or a stack trace.
 
 ## Project layout
 
 ```text
 src/core.ts         shared review orchestration
 src/cli.ts          command-line adapter
-src/mcp-server.ts   MCP adapter
+src/mcp.ts          MCP server factory (tool contract lives here)
+src/mcp-server.ts   MCP stdio entry point
 src/git.ts          Git inspection
 src/validation.ts   validation execution
-src/report.ts       Markdown report generation
-test/               public starter tests
+src/report.ts       Markdown/JSON report generation
+test/               tests (unit + CLI/MCP integration)
 ```
 
 When finished, submit via **Security → Report a vulnerability** on this
