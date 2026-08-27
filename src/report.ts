@@ -6,14 +6,28 @@ export type ReportInput = {
   validationResults: ValidationResult[];
 };
 
+function longestBacktickRun(content: string): number {
+  return content.match(/`+/g)?.reduce((max, run) => Math.max(max, run.length), 0) ?? 0;
+}
+
 /**
- * Pick a code fence longer than any backtick run inside the content, so
- * command output can never break out of its block and inject markdown
- * (or instructions to an AI client reading the report) into the report body.
+ * A block fence longer than any backtick run inside the content, so command
+ * output can never break out of its block and inject markdown (or instructions
+ * to an AI client reading the report) into the report body.
  */
 function fenceFor(content: string): string {
-  const longestRun = content.match(/`+/g)?.reduce((max, run) => Math.max(max, run.length), 0) ?? 0;
-  return "`".repeat(Math.max(3, longestRun + 1));
+  return "`".repeat(Math.max(3, longestBacktickRun(content) + 1));
+}
+
+/**
+ * Wrap arbitrary text (a command, a file path) in an inline code span whose
+ * delimiter is longer than any backtick run inside it, with the CommonMark
+ * padding space so leading/trailing backticks are literal. Neutralizes markdown
+ * and prevents the text from escaping into surrounding headings/list items.
+ */
+function inlineCode(text: string): string {
+  const delimiter = "`".repeat(longestBacktickRun(text) + 1);
+  return `${delimiter} ${text} ${delimiter}`;
 }
 
 export function markdownReport(input: ReportInput): string {
@@ -22,7 +36,9 @@ export function markdownReport(input: ReportInput): string {
     lines.push("_No changed files detected._");
   }
   for (const file of input.changedFiles) {
-    lines.push(`- ${file.path} (${file.status})`);
+    // File paths come from the inspected repo (attacker-controlled content);
+    // code-span them so an exotic filename cannot inject markdown.
+    lines.push(`- ${inlineCode(file.path)} (${file.status})`);
   }
   lines.push("", "## Validation results");
   if (input.validationResults.length === 0) {
@@ -30,9 +46,8 @@ export function markdownReport(input: ReportInput): string {
   }
   for (const result of input.validationResults) {
     const label = result.status === "passed" ? "passed" : "FAILED";
-    const command = result.command.includes("`") ? result.command : `\`${result.command}\``;
     const fence = fenceFor(result.output);
-    lines.push(`### ${command} — ${label}`, fence, result.output, fence);
+    lines.push(`### ${inlineCode(result.command)} — ${label}`, fence, result.output, fence);
   }
   return lines.join("\n");
 }
