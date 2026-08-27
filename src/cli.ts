@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { writeFileSync } from "node:fs";
+import { realpathSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { reviewRepository } from "./core.js";
 import { GitError } from "./git.js";
@@ -79,10 +79,24 @@ async function main(): Promise<number> {
   }
 }
 
-const isMainModule =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+/**
+ * True when this module is the process entry point. Node resolves an ESM
+ * entry to its real path, so when the bin is invoked through npm's symlink
+ * (node_modules/.bin/inspector) argv[1] is the symlink; compare real paths.
+ */
+function isMainModule(): boolean {
+  const entry = process.argv[1];
+  if (entry === undefined) {
+    return false;
+  }
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+}
 
-if (isMainModule) {
+if (isMainModule()) {
   main()
     .then((code) => {
       process.exitCode = code;
